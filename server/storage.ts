@@ -1,7 +1,7 @@
-import { 
+import {
   users, stores, categories, products, orders, orderItems, cartItems, wishlistItems,
   admins, websiteVisits, notifications, orderTracking, returnPolicies, returns,
-  type User, type InsertUser, type Store, type InsertStore, 
+  type User, type InsertUser, type Store, type InsertStore,
   type Category, type InsertCategory, type Product, type InsertProduct,
   type Order, type InsertOrder, type OrderItem, type InsertOrderItem,
   type CartItem, type InsertCartItem, type WishlistItem, type InsertWishlistItem,
@@ -106,7 +106,7 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
-  
+
   // User operations
   async getUser(id: number): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -236,18 +236,18 @@ export class DatabaseStorage implements IStorage {
   async getOrdersByStoreId(storeId: number): Promise<Order[]> {
     // Use a simple approach - get all orders and filter on the backend for now
     const allOrders = await db.select().from(orders).orderBy(desc(orders.createdAt));
-    
+
     // Filter orders that have items from this store
     const storeOrders = [];
     for (const order of allOrders) {
       const orderItemsForStore = await db.select().from(orderItems)
         .where(and(eq(orderItems.orderId, order.id), eq(orderItems.storeId, storeId)));
-      
+
       if (orderItemsForStore.length > 0) {
         storeOrders.push(order);
       }
     }
-    
+
     return storeOrders;
   }
 
@@ -363,38 +363,47 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getVisitStats(days: number = 30): Promise<any> {
-    const dateThreshold = new Date();
-    dateThreshold.setDate(dateThreshold.getDate() - days);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - days);
 
-    const totalVisits = await db.select({ count: count() })
+    const [totalVisits] = await db
+      .select({ count: count() })
       .from(websiteVisits)
-      .where(gte(websiteVisits.visitedAt, dateThreshold));
+      .where(gte(websiteVisits.visitedAt, thirtyDaysAgo));
 
-    const uniqueVisitors = await db.select({ count: count(websiteVisits.ipAddress) })
+    const [uniqueVisitors] = await db
+      .select({ count: count(sql`DISTINCT ${websiteVisits.ipAddress}`) })
       .from(websiteVisits)
-      .where(gte(websiteVisits.visitedAt, dateThreshold));
+      .where(gte(websiteVisits.visitedAt, thirtyDaysAgo));
 
-    const pageViews = await db.select({
-      page: websiteVisits.page,
-      count: count()
-    })
-    .from(websiteVisits)
-    .where(gte(websiteVisits.visitedAt, dateThreshold))
-    .groupBy(websiteVisits.page)
-    .orderBy(desc(count()));
+    const pageViews = await db
+      .select({
+        page: websiteVisits.page,
+        count: count(),
+      })
+      .from(websiteVisits)
+      .where(gte(websiteVisits.visitedAt, thirtyDaysAgo))
+      .groupBy(websiteVisits.page)
+      .orderBy(desc(count()));
 
     return {
-      totalVisits: totalVisits[0]?.count || 0,
-      uniqueVisitors: uniqueVisitors[0]?.count || 0,
-      pageViews
+      totalVisits: totalVisits.count,
+      uniqueVisitors: uniqueVisitors.count,
+      pageViews,
     };
   }
 
   async getPageViews(page?: string): Promise<WebsiteVisit[]> {
+    const query = db
+      .select()
+      .from(websiteVisits)
+      .orderBy(desc(websiteVisits.visitedAt));
+
     if (page) {
-      return await db.select().from(websiteVisits).where(eq(websiteVisits.page, page)).orderBy(desc(websiteVisits.visitedAt));
+      query.where(eq(websiteVisits.page, page));
     }
-    return await db.select().from(websiteVisits).orderBy(desc(websiteVisits.visitedAt));
+
+    return await query;
   }
 
   // Notifications
@@ -492,11 +501,11 @@ export class DatabaseStorage implements IStorage {
     const R = 6371; // Radius of the Earth in kilometers
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
-      Math.sin(dLat/2) * Math.sin(dLat/2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-      Math.sin(dLon/2) * Math.sin(dLon/2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     const distance = R * c; // Distance in kilometers
     return distance;
   }

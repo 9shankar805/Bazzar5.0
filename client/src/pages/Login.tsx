@@ -36,13 +36,38 @@ export default function Login() {
   const onSubmit = async (data: LoginForm) => {
     setIsLoading(true);
     try {
+      // Check for admin credentials
+      if (data.email === "admin@sirahbazaar.com" && data.password === "admin123") {
+        // Store admin token
+        localStorage.setItem("adminToken", "admin-token-123");
+        // Store admin data
+        const adminData = {
+          id: "1",
+          email: "admin@sirahbazaar.com",
+          fullName: "Admin User",
+          role: "super_admin",
+          permissions: ["all"],
+          lastLogin: new Date().toISOString()
+        };
+        localStorage.setItem("user", JSON.stringify(adminData));
+
+        toast({
+          title: "Welcome back!",
+          description: "You have been successfully logged in as admin.",
+        });
+
+        setLocation("/admin");
+        return;
+      }
+
+      // Regular user login
       await login(data.email, data.password);
-      
+
       toast({
         title: "Welcome back!",
         description: "You have been successfully logged in.",
       });
-      
+
       setLocation("/");
     } catch (error) {
       toast({

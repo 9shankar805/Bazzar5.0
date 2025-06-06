@@ -62,6 +62,12 @@ export default function Navbar() {
               <MapPin className="h-4 w-4" />
               <span>Store Map</span>
             </Link>
+            {user?.role === "store_owner" && (
+              <Link href="/shopkeeper-dashboard" className="flex items-center space-x-1 hover:text-accent transition-colors">
+                <Store className="h-4 w-4" />
+                <span>Seller Dashboard</span>
+              </Link>
+            )}
             {user && (
               <Link href="/customer-dashboard" className="flex items-center space-x-1 hover:text-accent transition-colors">
                 <User className="h-4 w-4" />
@@ -123,33 +129,13 @@ export default function Navbar() {
                         My Account
                       </Link>
                     </DropdownMenuItem>
-                    {user.role === "shopkeeper" && (
-                      <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem asChild>
-                          <Link href="/shopkeeper-dashboard" className="cursor-pointer">
-                            <Store className="h-4 w-4 mr-2" />
-                            Seller Dashboard
-                          </Link>
-                        </DropdownMenuItem>
-                      </>
-                    )}
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <Link href="/admin" className="cursor-pointer">
-                        <Shield className="h-4 w-4 mr-2" />
-                        Admin Panel
-                      </Link>
+                    <DropdownMenuItem onClick={handleLogout}>
+                      <LogOut className="h-4 w-4 mr-2" />
+                      Logout
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Button 
-                  variant="ghost" 
-                  className="text-white hover:text-accent p-2"
-                  onClick={handleLogout}
-                >
-                  <LogOut className="h-5 w-5" />
-                </Button>
               </div>
             ) : (
               <div className="flex items-center space-x-3">
@@ -187,20 +173,15 @@ export default function Navbar() {
             {user ? (
               <>
                 {/* Seller Dashboard */}
-                {user.role === "shopkeeper" && (
+                {user.role === "store_owner" && (
                   <Link href="/shopkeeper-dashboard" className="hover:text-accent transition-colors p-1">
                     <Store className="h-5 w-5" />
                   </Link>
                 )}
 
-                {/* Admin Panel */}
-                <Link href="/admin" className="hover:text-accent transition-colors p-1">
-                  <Shield className="h-5 w-5" />
-                </Link>
-
                 {/* Logout */}
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   className="text-white hover:text-accent p-1"
                   onClick={handleLogout}
                 >

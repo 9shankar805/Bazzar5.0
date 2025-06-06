@@ -10,6 +10,11 @@ import { Navigation, Pagination, Autoplay } from 'swiper/modules';
 import 'swiper/css';
 import 'swiper/css/navigation';
 import 'swiper/css/pagination';
+import FoodDeliveryBg from "../assets/food-delivery-illustration.jpg";
+import Slider1Bg from "../assets/slider1.jpg";
+import Slider2Bg from "../assets/slider2.jpg";
+import Slider3Bg from "../assets/slider3.jpg";
+import { useEffect, useState } from "react";
 
 export default function Homepage() {
   const { data: products } = useQuery<Product[]>({
@@ -23,6 +28,20 @@ export default function Homepage() {
   const featuredProducts = products?.slice(0, 6) || [];
   const popularStores = stores?.slice(0, 4) || [];
 
+  // Countdown logic for Slide 3
+  const [timeLeft, setTimeLeft] = useState(24 * 60 * 60); // 24 hours in seconds
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const hours = String(Math.floor(timeLeft / 3600)).padStart(2, '0');
+  const minutes = String(Math.floor((timeLeft % 3600) / 60)).padStart(2, '0');
+  const seconds = String(timeLeft % 60).padStart(2, '0');
+
   return (
     <div className="min-h-screen">
       {/* Hero Slider Section */}
@@ -33,14 +52,20 @@ export default function Homepage() {
           slidesPerView={1}
           navigation
           pagination={{ clickable: true }}
-          autoplay={{ delay: 4000, disableOnInteraction: false }}
+          autoplay={{ delay: 5000, disableOnInteraction: false }}
           className="h-full"
         >
           {/* Slide 1 - Fast Delivery */}
           <SwiperSlide>
-            <div className="relative h-full bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-800 flex items-center justify-center">
-              <div className="absolute inset-0 bg-black/20"></div>
-              <div className="relative text-center text-white px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
+            <div className="relative h-full flex items-center justify-center">
+              <img
+                src={Slider2Bg}
+                alt="Fast delivery illustration"
+                className="absolute inset-0 w-full h-full object-cover z-0"
+                style={{ filter: 'brightness(0.7)' }}
+              />
+              <div className="absolute inset-0 bg-black/40 z-10"></div>
+              <div className="relative text-center text-white px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto z-20">
                 <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold mb-4 leading-tight">
                   From Click to Doorstep — In Just One Hour
                 </h1>
@@ -59,9 +84,15 @@ export default function Homepage() {
 
           {/* Slide 2 - Food Delivery */}
           <SwiperSlide>
-            <div className="relative h-full bg-gradient-to-br from-orange-500 via-red-500 to-pink-600 flex items-center justify-center">
-              <div className="absolute inset-0 bg-black/25"></div>
-              <div className="relative text-center text-white px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
+            <div className="relative h-full flex items-center justify-center">
+              <img
+                src={Slider1Bg}
+                alt="Food delivery illustration"
+                className="absolute inset-0 w-full h-full object-cover z-0"
+                style={{ filter: 'brightness(0.7)' }}
+              />
+              <div className="absolute inset-0 bg-black/40 z-10"></div>
+              <div className="relative text-center text-white px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto z-20">
                 <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-6xl font-bold mb-4 sm:mb-6 leading-tight">
                   Hot & Fresh – Tasty Food at Your Doorstep
                 </h1>
@@ -80,17 +111,40 @@ export default function Homepage() {
 
           {/* Slide 3 - Limited Offers */}
           <SwiperSlide>
-            <div className="relative h-full bg-gradient-to-br from-green-500 via-emerald-600 to-teal-700 flex items-center justify-center">
-              <div className="absolute inset-0 bg-black/20"></div>
-              <div className="relative text-center text-white px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto">
-                <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-6xl font-bold mb-4 sm:mb-6 leading-tight">
+            <div className="relative h-full flex items-center justify-center">
+              <img
+                src={Slider3Bg}
+                alt="Limited offer background"
+                className="absolute inset-0 w-full h-full object-cover z-0"
+                style={{ filter: 'brightness(0.7)' }}
+              />
+              <div className="absolute inset-0 bg-black/40 z-10"></div>
+              <div className="relative text-center text-white px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto z-20 flex flex-col items-center">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-6xl font-bold mb-4 sm:mb-6 leading-tight animate-pulse">
                   Grab the Offer Fast – Limited Time Only!
                 </h1>
                 <p className="text-base sm:text-lg md:text-xl lg:text-2xl mb-6 sm:mb-8 font-medium opacity-90">
                   Deals you can't miss.
                 </p>
+                {/* Countdown Timer */}
+                <div className="flex space-x-4 mb-8">
+                  <div className="flex flex-col items-center">
+                    <span className="text-4xl sm:text-5xl md:text-6xl font-mono font-bold animate-bounce">{hours}</span>
+                    <span className="text-xs sm:text-sm mt-1">Hours</span>
+                  </div>
+                  <span className="text-4xl sm:text-5xl md:text-6xl font-mono font-bold">:</span>
+                  <div className="flex flex-col items-center">
+                    <span className="text-4xl sm:text-5xl md:text-6xl font-mono font-bold animate-bounce">{minutes}</span>
+                    <span className="text-xs sm:text-sm mt-1">Minutes</span>
+                  </div>
+                  <span className="text-4xl sm:text-5xl md:text-6xl font-mono font-bold">:</span>
+                  <div className="flex flex-col items-center">
+                    <span className="text-4xl sm:text-5xl md:text-6xl font-mono font-bold animate-bounce">{seconds}</span>
+                    <span className="text-xs sm:text-sm mt-1">Seconds</span>
+                  </div>
+                </div>
                 <Link href="/products">
-                  <Button size="lg" className="bg-white text-black hover:bg-gray-100 text-base sm:text-lg px-6 sm:px-8 py-3 sm:py-4 rounded-full font-semibold">
+                  <Button size="lg" className="bg-white text-black hover:bg-gray-100 text-base sm:text-lg px-6 sm:px-8 py-3 sm:py-4 rounded-full font-semibold animate-pulse">
                     Grab Deal
                     <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
                   </Button>

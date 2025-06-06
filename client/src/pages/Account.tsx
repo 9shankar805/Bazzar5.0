@@ -20,7 +20,7 @@ export default function Account() {
 
   const { data: stores, isLoading: storesLoading } = useQuery({
     queryKey: ["/api/stores/owner", user?.id],
-    enabled: !!user?.id && user?.role === "shopkeeper",
+    enabled: !!user?.id && user?.role === "store_owner",
   });
 
   if (!user) {
@@ -97,9 +97,9 @@ export default function Account() {
                   Joined {new Date(user.createdAt).toLocaleDateString()}
                 </span>
               </div>
-              
+
               <Separator />
-              
+
               <div className="space-y-2">
                 <Link href="/customer-dashboard">
                   <Button variant="outline" className="w-full justify-start">
@@ -107,7 +107,7 @@ export default function Account() {
                     Edit Profile
                   </Button>
                 </Link>
-                {user.role === "shopkeeper" && (
+                {user.role === "store_owner" && (
                   <Link href="/shopkeeper-dashboard">
                     <Button variant="outline" className="w-full justify-start">
                       <Store className="h-4 w-4 mr-2" />
@@ -115,8 +115,8 @@ export default function Account() {
                     </Button>
                   </Link>
                 )}
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="w-full justify-start text-red-600 hover:text-red-700"
                   onClick={logout}
                 >
@@ -194,7 +194,7 @@ export default function Account() {
           </Card>
 
           {/* Store Information (for shopkeepers) */}
-          {user.role === "shopkeeper" && (
+          {user.role === "store_owner" && (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">

@@ -1,9 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { 
+import {
   insertUserSchema, insertStoreSchema, insertProductSchema, insertOrderSchema, insertCartItemSchema,
-  insertWishlistItemSchema, insertAdminSchema, insertWebsiteVisitSchema, insertNotificationSchema, 
+  insertWishlistItemSchema, insertAdminSchema, insertWebsiteVisitSchema, insertNotificationSchema,
   insertOrderTrackingSchema, insertReturnPolicySchema, insertReturnSchema, insertCategorySchema
 } from "@shared/schema";
 
@@ -19,7 +19,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         sessionId: (req as any).sessionID || 'anonymous',
         userId: req.body?.userId || null
       };
-      
+
       await storage.recordVisit(visitData);
     } catch (error) {
       // Continue even if visit tracking fails
@@ -31,19 +31,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/auth/register", async (req, res) => {
     try {
       const userData = insertUserSchema.parse(req.body);
-      
+
       // Check if user already exists
       const existingUser = await storage.getUserByEmail(userData.email);
       if (existingUser) {
         return res.status(400).json({ error: "User already exists" });
       }
-      
+
       const user = await storage.createUser(userData);
-      
+
       // Don't send password back
       const { password, ...userWithoutPassword } = user;
       res.json({ user: userWithoutPassword });
     } catch (error) {
+      console.error("Registration error details:", error);
       res.status(400).json({ error: "Invalid user data" });
     }
   });
@@ -51,12 +52,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { email, password } = req.body;
-      
+
       const user = await storage.getUserByEmail(email);
       if (!user || user.password !== password) {
         return res.status(401).json({ error: "Invalid credentials" });
       }
-      
+
       // Don't send password back
       const { password: _, ...userWithoutPassword } = user;
       res.json({ user: userWithoutPassword });
@@ -80,11 +81,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       const store = await storage.getStore(id);
-      
+
       if (!store) {
         return res.status(404).json({ error: "Store not found" });
       }
-      
+
       res.json(store);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch store" });
@@ -104,18 +105,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/stores/nearby", async (req, res) => {
     try {
       const { lat, lon } = req.query;
-      
+
       if (!lat || !lon) {
         return res.status(400).json({ error: "Latitude and longitude are required" });
       }
-      
+
       const userLat = parseFloat(lat as string);
       const userLon = parseFloat(lon as string);
-      
+
       if (isNaN(userLat) || isNaN(userLon)) {
         return res.status(400).json({ error: "Invalid coordinates" });
       }
-      
+
       const storesWithDistance = await storage.getStoresWithDistance(userLat, userLon);
       res.json(storesWithDistance);
     } catch (error) {
@@ -127,31 +128,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/stores", async (req, res) => {
     try {
       const storeData = insertStoreSchema.parse(req.body);
-      
+
       // Check if user already has a store
       const existingStores = await storage.getStoresByOwnerId(storeData.ownerId);
       if (existingStores.length > 0) {
-        return res.status(400).json({ 
-          error: "You can only create one store per account" 
+        return res.status(400).json({
+          error: "You can only create one store per account"
         });
       }
-      
+
       // Check if store name already exists
       const allStores = await storage.getAllStores();
-      const nameExists = allStores.some(store => 
+      const nameExists = allStores.some(store =>
         store.name.toLowerCase() === storeData.name.toLowerCase()
       );
       if (nameExists) {
-        return res.status(400).json({ 
-          error: "A store with this name already exists" 
+        return res.status(400).json({
+          error: "A store with this name already exists"
         });
       }
-      
+
       const store = await storage.createStore(storeData);
       res.json(store);
     } catch (error) {
       console.error("Store creation error:", error);
-      res.status(400).json({ 
+      res.status(400).json({
         error: "Invalid store data",
         details: error instanceof Error ? error.message : "Unknown error"
       });
@@ -162,7 +163,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/products", async (req, res) => {
     try {
       const { search, category, storeId } = req.query;
-      
+
       let products;
       if (search) {
         products = await storage.searchProducts(search as string);
@@ -173,7 +174,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         products = await storage.getAllProducts();
       }
-      
+
       res.json(products);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch products" });
@@ -184,11 +185,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       const product = await storage.getProduct(id);
-      
+
       if (!product) {
         return res.status(404).json({ error: "Product not found" });
       }
-      
+
       res.json(product);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch product" });
@@ -202,9 +203,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(product);
     } catch (error) {
       console.error("Product creation error:", error);
-      res.status(400).json({ 
-        error: "Invalid product data", 
-        details: error instanceof Error ? error.message : "Unknown error" 
+      res.status(400).json({
+        error: "Invalid product data",
+        details: error instanceof Error ? error.message : "Unknown error"
       });
     }
   });
@@ -214,11 +215,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       const updates = req.body;
       const product = await storage.updateProduct(id, updates);
-      
+
       if (!product) {
         return res.status(404).json({ error: "Product not found" });
       }
-      
+
       res.json(product);
     } catch (error) {
       res.status(400).json({ error: "Failed to update product" });
@@ -229,11 +230,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteProduct(id);
-      
+
       if (!deleted) {
         return res.status(404).json({ error: "Product not found" });
       }
-      
+
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete product" });
@@ -243,9 +244,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Category routes
   app.get("/api/categories", async (req, res) => {
     try {
-      const categories = await storage.getAllCategories();
+      let categories = await storage.getAllCategories();
+
+      // If no categories exist, create default ones
+      if (categories.length === 0) {
+        const defaultCategories = [
+          { name: "Electronics", slug: "electronics" },
+          { name: "Clothing", slug: "clothing" },
+          { name: "Home & Garden", slug: "home-garden" },
+          { name: "Books", slug: "books" },
+          { name: "Sports", slug: "sports" },
+          { name: "Beauty", slug: "beauty" },
+          { name: "Toys", slug: "toys" },
+          { name: "Health", slug: "health" },
+          { name: "Automotive", slug: "automotive" },
+          { name: "Garden", slug: "garden" }
+        ];
+
+        for (const category of defaultCategories) {
+          await storage.createCategory(category);
+        }
+
+        categories = await storage.getAllCategories();
+      }
+
       res.json(categories);
     } catch (error) {
+      console.error("Categories fetch error:", error);
       res.status(500).json({ error: "Failed to fetch categories" });
     }
   });
@@ -257,9 +282,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(category);
     } catch (error) {
       console.error("Category creation error:", error);
-      res.status(400).json({ 
-        error: "Invalid category data", 
-        details: error instanceof Error ? error.message : "Unknown error" 
+      res.status(400).json({
+        error: "Invalid category data",
+        details: error instanceof Error ? error.message : "Unknown error"
       });
     }
   });
@@ -269,11 +294,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       const updates = req.body;
       const category = await storage.updateCategory(id, updates);
-      
+
       if (!category) {
         return res.status(404).json({ error: "Category not found" });
       }
-      
+
       res.json(category);
     } catch (error) {
       res.status(400).json({ error: "Failed to update category" });
@@ -284,11 +309,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteCategory(id);
-      
+
       if (!deleted) {
         return res.status(404).json({ error: "Category not found" });
       }
-      
+
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to delete category" });
@@ -300,7 +325,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = parseInt(req.params.userId);
       const cartItems = await storage.getCartItems(userId);
-      
+
       // Get product details for each cart item
       const cartWithProducts = await Promise.all(
         cartItems.map(async (item) => {
@@ -308,7 +333,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return { ...item, product };
         })
       );
-      
+
       res.json(cartWithProducts);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch cart" });
@@ -330,11 +355,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       const { quantity } = req.body;
       const cartItem = await storage.updateCartItem(id, quantity);
-      
+
       if (!cartItem) {
         return res.status(404).json({ error: "Cart item not found" });
       }
-      
+
       res.json(cartItem);
     } catch (error) {
       res.status(400).json({ error: "Failed to update cart item" });
@@ -345,11 +370,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       const deleted = await storage.removeFromCart(id);
-      
+
       if (!deleted) {
         return res.status(404).json({ error: "Cart item not found" });
       }
-      
+
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to remove cart item" });
@@ -360,11 +385,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = parseInt(req.params.userId);
       const cleared = await storage.clearCart(userId);
-      
+
       if (!cleared) {
         return res.status(404).json({ error: "Failed to clear cart" });
       }
-      
+
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to clear cart" });
@@ -396,11 +421,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       const deleted = await storage.removeFromWishlist(id);
-      
+
       if (!deleted) {
         return res.status(404).json({ error: "Wishlist item not found" });
       }
-      
+
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Failed to remove wishlist item" });
@@ -423,7 +448,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const customerId = parseInt(req.params.customerId);
       const orders = await storage.getOrdersByCustomerId(customerId);
-      
+
       // Get order items for each order
       const ordersWithItems = await Promise.all(
         orders.map(async (order) => {
@@ -431,7 +456,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return { ...order, items };
         })
       );
-      
+
       res.json(ordersWithItems);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch orders" });
@@ -442,7 +467,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const storeId = parseInt(req.params.storeId);
       const orders = await storage.getOrdersByStoreId(storeId);
-      
+
       // Get order items for each order
       const ordersWithItems = await Promise.all(
         orders.map(async (order) => {
@@ -450,7 +475,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return { ...order, items };
         })
       );
-      
+
       res.json(ordersWithItems);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch orders" });
@@ -461,11 +486,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { order, items } = req.body;
       console.log("Order request:", { order, items });
-      
+
       // Create order with location data
       const orderData = insertOrderSchema.parse(order);
       const createdOrder = await storage.createOrder(orderData);
-      
+
       // Create order items and collect store owners for notifications
       const storeOwners = new Set<number>();
       const orderItems = await Promise.all(
@@ -474,30 +499,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ...item,
             orderId: createdOrder.id
           });
-          
+
           // Get store info for notifications
           const store = await storage.getStore(item.storeId);
           if (store) {
             storeOwners.add(store.ownerId);
           }
-          
+
           return orderItem;
         })
       );
-      
+
       // Create order tracking
       await storage.createOrderTracking({
         orderId: createdOrder.id,
         status: "pending",
         description: "Order placed successfully"
       });
-      
+
       // Send notifications to store owners with customer location details
       for (const ownerId of Array.from(storeOwners)) {
-        const locationInfo = orderData.latitude && orderData.longitude 
-          ? `Customer Location: ${orderData.latitude}, ${orderData.longitude}` 
+        const locationInfo = orderData.latitude && orderData.longitude
+          ? `Customer Location: ${orderData.latitude}, ${orderData.longitude}`
           : "Location not provided";
-          
+
         await storage.createNotification({
           userId: ownerId,
           title: "New Order Received",
@@ -505,7 +530,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           type: "success"
         });
       }
-      
+
       // Send confirmation notification to customer
       await storage.createNotification({
         userId: orderData.customerId,
@@ -513,10 +538,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: `Your order #${createdOrder.id} has been confirmed and is being processed`,
         type: "success"
       });
-      
+
       // Clear user's cart
       await storage.clearCart(order.customerId);
-      
+
       res.json({ order: createdOrder, items: orderItems });
     } catch (error) {
       console.error("Order creation error:", error);
@@ -529,11 +554,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       const { status } = req.body;
       const order = await storage.updateOrderStatus(id, status);
-      
+
       if (!order) {
         return res.status(404).json({ error: "Order not found" });
       }
-      
+
       res.json(order);
     } catch (error) {
       res.status(400).json({ error: "Failed to update order status" });
@@ -545,11 +570,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const id = parseInt(req.params.id);
       const user = await storage.getUser(id);
-      
+
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
-      
+
       // Don't send password back
       const { password, ...userWithoutPassword } = user;
       res.json(userWithoutPassword);
@@ -563,11 +588,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       const updates = req.body;
       const user = await storage.updateUser(id, updates);
-      
+
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
-      
+
       // Don't send password back
       const { password, ...userWithoutPassword } = user;
       res.json(userWithoutPassword);
@@ -581,11 +606,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { email, password } = req.body;
       const admin = await storage.getAdminByEmail(email);
-      
+
       if (!admin || admin.password !== password) {
         return res.status(401).json({ error: "Invalid admin credentials" });
       }
-      
+
       const { password: _, ...adminWithoutPassword } = admin;
       res.json({ admin: adminWithoutPassword });
     } catch (error) {
@@ -597,7 +622,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const adminData = insertAdminSchema.parse(req.body);
       const admin = await storage.createAdmin(adminData);
-      
+
       const { password, ...adminWithoutPassword } = admin;
       res.json({ admin: adminWithoutPassword });
     } catch (error) {
@@ -605,24 +630,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Website analytics routes
+  // Admin analytics routes
   app.get("/api/admin/analytics/stats", async (req, res) => {
     try {
-      const days = parseInt(req.query.days as string) || 30;
-      const stats = await storage.getVisitStats(days);
+      const stats = await storage.getVisitStats();
       res.json(stats);
     } catch (error) {
-      res.status(500).json({ error: "Failed to fetch analytics" });
+      console.error("Analytics stats error:", error);
+      res.status(500).json({ error: "Failed to fetch analytics stats" });
     }
   });
 
   app.get("/api/admin/analytics/visits", async (req, res) => {
     try {
-      const page = req.query.page as string;
-      const visits = await storage.getPageViews(page);
+      const visits = await storage.getPageViews();
       res.json(visits);
     } catch (error) {
-      res.status(500).json({ error: "Failed to fetch page views" });
+      console.error("Analytics visits error:", error);
+      res.status(500).json({ error: "Failed to fetch analytics visits" });
     }
   });
 
@@ -672,9 +697,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const orderId = parseInt(req.params.orderId);
       const { status, description, location } = req.body;
-      
+
       const tracking = await storage.updateOrderTracking(orderId, status, description, location);
-      
+
       // Create notification for customer
       const order = await storage.getOrder(orderId);
       if (order) {
@@ -686,7 +711,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           orderId: orderId
         });
       }
-      
+
       res.json(tracking);
     } catch (error) {
       res.status(500).json({ error: "Failed to update order tracking" });
@@ -741,7 +766,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const returnData = insertReturnSchema.parse(req.body);
       const returnItem = await storage.createReturn(returnData);
-      
+
       // Create notification for store owner
       const orderItem = await storage.getOrderItems(returnData.orderId);
       if (orderItem.length > 0) {
@@ -756,7 +781,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
       }
-      
+
       res.json(returnItem);
     } catch (error) {
       res.status(400).json({ error: "Failed to create return request" });
@@ -788,7 +813,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const id = parseInt(req.params.id);
       const { status } = req.body;
       const returnItem = await storage.updateReturnStatus(id, status);
-      
+
       if (returnItem) {
         // Create notification for customer
         await storage.createNotification({
@@ -799,7 +824,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           orderId: returnItem.orderId
         });
       }
-      
+
       res.json(returnItem);
     } catch (error) {
       res.status(500).json({ error: "Failed to update return status" });
@@ -813,11 +838,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!lat || !lon) {
         return res.status(400).json({ error: "Latitude and longitude are required" });
       }
-      
+
       const userLat = parseFloat(lat as string);
       const userLon = parseFloat(lon as string);
       const storesWithDistance = await storage.getStoresWithDistance(userLat, userLon);
-      
+
       res.json(storesWithDistance);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch nearby stores" });
@@ -829,10 +854,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { order, items } = req.body;
       const orderData = insertOrderSchema.parse(order);
-      
+
       // Create the order
       const createdOrder = await storage.createOrder(orderData);
-      
+
       // Create order items and notify store owners
       const storeOwners = new Set<number>();
       for (const item of items) {
@@ -843,24 +868,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           price: item.price,
           storeId: item.storeId
         });
-        
+
         // Track store owners for notifications
         const store = await storage.getStore(item.storeId);
         if (store) {
           storeOwners.add(store.ownerId);
         }
       }
-      
+
       // Clear customer's cart
       await storage.clearCart(orderData.customerId);
-      
+
       // Create order tracking
       await storage.createOrderTracking({
         orderId: createdOrder.id,
         status: "pending",
         description: "Order placed successfully"
       });
-      
+
       // Send notifications to store owners
       for (const ownerId of Array.from(storeOwners)) {
         await storage.createNotification({
@@ -871,7 +896,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           orderId: createdOrder.id
         });
       }
-      
+
       // Send confirmation notification to customer
       await storage.createNotification({
         userId: orderData.customerId,
@@ -880,7 +905,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         type: "success",
         orderId: createdOrder.id
       });
-      
+
       res.json({ order: createdOrder, success: true });
     } catch (error) {
       console.error("Enhanced order creation error:", error);

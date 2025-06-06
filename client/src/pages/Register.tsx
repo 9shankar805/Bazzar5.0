@@ -18,7 +18,7 @@ const registerSchema = z.object({
   phone: z.string().min(10, "Phone number must be at least 10 digits"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   confirmPassword: z.string(),
-  role: z.enum(["customer", "shopkeeper"]),
+  role: z.enum(["customer", "store_owner"]),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -53,12 +53,12 @@ export default function Register() {
     try {
       const { confirmPassword, ...registerData } = data;
       await register(registerData);
-      
+
       toast({
         title: "Account created successfully!",
         description: "Welcome to Siraha Bazaar. You are now logged in.",
       });
-      
+
       setLocation("/");
     } catch (error) {
       toast({
@@ -160,7 +160,7 @@ export default function Register() {
                               Customer - Shop from local stores
                             </div>
                           </SelectItem>
-                          <SelectItem value="shopkeeper">
+                          <SelectItem value="store_owner">
                             <div className="flex items-center">
                               <Store className="h-4 w-4 mr-2" />
                               Shopkeeper - Sell your products
@@ -254,7 +254,7 @@ export default function Register() {
               </div>
             </div>
 
-            {selectedRole === "shopkeeper" && (
+            {selectedRole === "store_owner" && (
               <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg">
                 <p className="text-sm text-blue-800 dark:text-blue-200">
                   <strong>Shopkeeper Benefits:</strong>

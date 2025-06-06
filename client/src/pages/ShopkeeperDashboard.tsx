@@ -1,21 +1,24 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { 
-  Package, 
-  ShoppingCart, 
-  DollarSign, 
-  Star, 
-  Plus, 
-  Edit, 
+import {
+  Package,
+  ShoppingCart,
+  DollarSign,
+  Star,
+  Plus,
+  Edit,
   Trash2,
   Eye,
   TrendingUp,
   Users,
   Clock,
-  MapPin
+  MapPin,
+  X,
+  Camera,
+  Upload
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +48,12 @@ const productSchema = z.object({
   isOnOffer: z.boolean().default(false),
   offerPercentage: z.number().min(0).max(100).default(0),
   offerEndDate: z.string().optional(),
+  specifications: z.array(z.object({
+    key: z.string(),
+    value: z.string()
+  })).default([]),
+  features: z.array(z.string()).default([]),
+  tags: z.array(z.string()).default([])
 });
 
 const storeSchema = z.object({
@@ -68,6 +77,23 @@ export default function ShopkeeperDashboard() {
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const { user } = useAuth();
   const { toast } = useToast();
+  const [showCamera, setShowCamera] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+
+  // Check if user is a store owner
+  if (!user || user.role !== "store_owner") {
+    return (
+      <div className="min-h-screen bg-muted flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6 text-center">
+            <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
+            <p className="text-muted-foreground">This page is only accessible to store owners.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // Queries
   const { data: stores = [] } = useQuery<Store[]>({
@@ -109,6 +135,11 @@ export default function ShopkeeperDashboard() {
 
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ["/api/categories"],
+    queryFn: async () => {
+      const response = await fetch("/api/categories");
+      if (!response.ok) throw new Error('Failed to fetch categories');
+      return response.json();
+    },
   });
 
   // Form for adding/editing products
@@ -127,6 +158,9 @@ export default function ShopkeeperDashboard() {
       isOnOffer: false,
       offerPercentage: 0,
       offerEndDate: "",
+      specifications: [],
+      features: [],
+      tags: [],
     },
   });
 
@@ -163,6 +197,9 @@ export default function ShopkeeperDashboard() {
         isOnOffer: data.isOnOffer || false,
         offerPercentage: data.offerPercentage || 0,
         offerEndDate: data.offerEndDate || undefined,
+        specifications: data.specifications || [],
+        features: data.features || [],
+        tags: data.tags || [],
       };
 
       if (editingProduct) {
@@ -202,6 +239,9 @@ export default function ShopkeeperDashboard() {
       isOnOffer: product.isOnOffer || false,
       offerPercentage: product.offerPercentage || 0,
       offerEndDate: product.offerEndDate || "",
+      specifications: product.specifications || [],
+      features: product.features || [],
+      tags: product.tags || [],
     });
     setActiveTab("add-product");
   };
@@ -272,28 +312,48 @@ export default function ShopkeeperDashboard() {
       });
 
       const { latitude, longitude } = position.coords;
-      
+
       // Update form with coordinates
       storeForm.setValue("latitude", latitude.toString());
       storeForm.setValue("longitude", longitude.toString());
-      
+
       // Generate Google Maps link
       const googleMapsLink = `https://maps.google.com/?q=${latitude},${longitude}`;
       storeForm.setValue("googleMapsLink", googleMapsLink);
 
-      // Try to get address from coordinates using reverse geocoding
+      // Try to get address from coordinates using OpenStreetMap Nominatim
       try {
         const response = await fetch(
-          `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`
         );
         const data = await response.json();
-        
-        if (data.locality || data.city) {
-          const address = `${data.locality || data.city}, ${data.principalSubdivision || ''}, ${data.countryName || ''}`.replace(/,\s*,/g, ',').replace(/,\s*$/, '');
+
+        if (data.display_name) {
+          // Get detailed address components
+          const addressComponents = {
+            houseNumber: data.address?.house_number || '',
+            street: data.address?.road || '',
+            city: data.address?.city || data.address?.town || data.address?.village || '',
+            district: data.address?.county || data.address?.district || '',
+            state: data.address?.state || '',
+            country: data.address?.country || '',
+            postcode: data.address?.postcode || ''
+          };
+
+          // Format address in a more readable way
+          const address = [
+            addressComponents.houseNumber && `${addressComponents.houseNumber} ${addressComponents.street}`,
+            addressComponents.city,
+            addressComponents.district,
+            addressComponents.state,
+            addressComponents.country
+          ].filter(Boolean).join(', ');
+
           storeForm.setValue("address", address);
         }
       } catch (geocodeError) {
         console.log("Reverse geocoding failed, coordinates set without address");
+        storeForm.setValue("address", "Location coordinates set but address lookup failed");
       }
 
       toast({
@@ -324,18 +384,55 @@ export default function ShopkeeperDashboard() {
     }
   };
 
-  if (!user || user.role !== "shopkeeper") {
-    return (
-      <div className="min-h-screen bg-muted flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6 text-center">
-            <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
-            <p className="text-muted-foreground">This page is only accessible to shopkeepers.</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  const handleCameraCapture = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setShowCamera(true);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to access camera",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const captureImage = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement('canvas');
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0);
+        const imageUrl = canvas.toDataURL('image/jpeg');
+        setCapturedImage(imageUrl);
+        setShowCamera(false);
+        // Stop the camera stream
+        const stream = videoRef.current.srcObject as MediaStream;
+        stream?.getTracks().forEach(track => track.stop());
+      }
+    }
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files) return;
+
+    for (const file of Array.from(files)) {
+      // Convert file to base64
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        const currentImages = form.getValues("images") || [];
+        form.setValue("images", [...currentImages, base64String]);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-muted">
@@ -444,8 +541,8 @@ export default function ShopkeeperDashboard() {
                           <p className="font-semibold">₹{Number(order.totalAmount).toLocaleString()}</p>
                           <Badge variant={
                             order.status === "delivered" ? "default" :
-                            order.status === "shipped" ? "secondary" :
-                            order.status === "processing" ? "outline" : "destructive"
+                              order.status === "shipped" ? "secondary" :
+                                order.status === "processing" ? "outline" : "destructive"
                           }>
                             {order.status}
                           </Badge>
@@ -545,7 +642,7 @@ export default function ShopkeeperDashboard() {
                             </FormItem>
                           )}
                         />
-                        
+
                         <FormField
                           control={storeForm.control}
                           name="longitude"
@@ -568,8 +665,8 @@ export default function ShopkeeperDashboard() {
                           <FormItem>
                             <FormLabel>Google Maps Link (Auto-generated)</FormLabel>
                             <FormControl>
-                              <Input 
-                                placeholder="Will be auto-filled when location is obtained" 
+                              <Input
+                                placeholder="Will be auto-filled when location is obtained"
                                 {...field}
                                 readOnly
                                 className="bg-muted"
@@ -588,10 +685,10 @@ export default function ShopkeeperDashboard() {
                         <FormItem>
                           <FormLabel>Store Description</FormLabel>
                           <FormControl>
-                            <Textarea 
+                            <Textarea
                               placeholder="Describe your store and what you sell"
                               className="min-h-20"
-                              {...field} 
+                              {...field}
                             />
                           </FormControl>
                           <FormMessage />
@@ -748,7 +845,7 @@ export default function ShopkeeperDashboard() {
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Category</FormLabel>
-                            <Select 
+                            <Select
                               onValueChange={(value) => field.onChange(parseInt(value))}
                               value={field.value?.toString()}
                             >
@@ -805,8 +902,8 @@ export default function ShopkeeperDashboard() {
                           <FormItem>
                             <FormLabel>Stock Quantity</FormLabel>
                             <FormControl>
-                              <Input 
-                                type="number" 
+                              <Input
+                                type="number"
                                 placeholder="Enter quantity"
                                 {...field}
                                 onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
@@ -818,23 +915,315 @@ export default function ShopkeeperDashboard() {
                       />
                     </div>
 
-                    <FormField
-                      control={form.control}
-                      name="imageUrl"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Product Image URL</FormLabel>
-                          <FormControl>
-                            <Input 
-                              type="url"
-                              placeholder="https://example.com/image.jpg"
-                              {...field} 
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                    <div className="space-y-4">
+                      <FormField
+                        control={form.control}
+                        name="imageUrl"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Product Images</FormLabel>
+                            <FormControl>
+                              <div className="space-y-4">
+                                <div className="flex gap-4">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={handleCameraCapture}
+                                    className="flex-1"
+                                  >
+                                    <Camera className="h-4 w-4 mr-2" />
+                                    Take Photo
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => document.getElementById('file-upload')?.click()}
+                                    className="flex-1"
+                                  >
+                                    <Upload className="h-4 w-4 mr-2" />
+                                    Upload Image
+                                  </Button>
+                                  <input
+                                    id="file-upload"
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    className="hidden"
+                                    onChange={handleFileUpload}
+                                  />
+                                </div>
+
+                                {showCamera && (
+                                  <div className="relative">
+                                    <video
+                                      ref={videoRef}
+                                      autoPlay
+                                      playsInline
+                                      className="w-full h-64 object-cover rounded-lg"
+                                    />
+                                    <Button
+                                      type="button"
+                                      onClick={captureImage}
+                                      className="absolute bottom-4 left-1/2 transform -translate-x-1/2"
+                                    >
+                                      Capture
+                                    </Button>
+                                  </div>
+                                )}
+
+                                {capturedImage && (
+                                  <div className="relative">
+                                    <img
+                                      src={capturedImage}
+                                      alt="Captured"
+                                      className="w-full h-64 object-cover rounded-lg"
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="destructive"
+                                      size="icon"
+                                      className="absolute top-2 right-2"
+                                      onClick={() => setCapturedImage(null)}
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                )}
+
+                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                  {form.getValues("images")?.map((image, index) => (
+                                    <div key={index} className="relative">
+                                      <img
+                                        src={image}
+                                        alt={`Product ${index + 1}`}
+                                        className="w-full h-32 object-cover rounded-lg"
+                                      />
+                                      <Button
+                                        type="button"
+                                        variant="destructive"
+                                        size="icon"
+                                        className="absolute top-2 right-2"
+                                        onClick={() => {
+                                          const currentImages = form.getValues("images") || [];
+                                          form.setValue(
+                                            "images",
+                                            currentImages.filter((_, i) => i !== index)
+                                          );
+                                        }}
+                                      >
+                                        <X className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="images"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Additional Image URLs</FormLabel>
+                            <FormControl>
+                              <div className="space-y-2">
+                                {field.value.map((url, index) => (
+                                  <div key={index} className="flex gap-2">
+                                    <Input
+                                      type="url"
+                                      placeholder="https://example.com/image.jpg"
+                                      value={url}
+                                      onChange={(e) => {
+                                        const newUrls = [...field.value];
+                                        newUrls[index] = e.target.value;
+                                        field.onChange(newUrls);
+                                      }}
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      onClick={() => {
+                                        const newUrls = field.value.filter((_, i) => i !== index);
+                                        field.onChange(newUrls);
+                                      }}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                ))}
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() => field.onChange([...field.value, ""])}
+                                >
+                                  <Plus className="h-4 w-4 mr-2" />
+                                  Add Image URL
+                                </Button>
+                              </div>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="specifications"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Product Specifications</FormLabel>
+                            <FormControl>
+                              <div className="space-y-2">
+                                {field.value.map((spec, index) => (
+                                  <div key={index} className="flex gap-2">
+                                    <Input
+                                      placeholder="Specification name"
+                                      value={spec.key}
+                                      onChange={(e) => {
+                                        const newSpecs = [...field.value];
+                                        newSpecs[index] = { ...spec, key: e.target.value };
+                                        field.onChange(newSpecs);
+                                      }}
+                                    />
+                                    <Input
+                                      placeholder="Value"
+                                      value={spec.value}
+                                      onChange={(e) => {
+                                        const newSpecs = [...field.value];
+                                        newSpecs[index] = { ...spec, value: e.target.value };
+                                        field.onChange(newSpecs);
+                                      }}
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      onClick={() => {
+                                        const newSpecs = field.value.filter((_, i) => i !== index);
+                                        field.onChange(newSpecs);
+                                      }}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                ))}
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() => field.onChange([...field.value, { key: "", value: "" }])}
+                                >
+                                  <Plus className="h-4 w-4 mr-2" />
+                                  Add Specification
+                                </Button>
+                              </div>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="features"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Product Features</FormLabel>
+                            <FormControl>
+                              <div className="space-y-2">
+                                {field.value.map((feature, index) => (
+                                  <div key={index} className="flex gap-2">
+                                    <Input
+                                      placeholder="Enter feature"
+                                      value={feature}
+                                      onChange={(e) => {
+                                        const newFeatures = [...field.value];
+                                        newFeatures[index] = e.target.value;
+                                        field.onChange(newFeatures);
+                                      }}
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="icon"
+                                      onClick={() => {
+                                        const newFeatures = field.value.filter((_, i) => i !== index);
+                                        field.onChange(newFeatures);
+                                      }}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                ))}
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() => field.onChange([...field.value, ""])}
+                                >
+                                  <Plus className="h-4 w-4 mr-2" />
+                                  Add Feature
+                                </Button>
+                              </div>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="tags"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Product Tags</FormLabel>
+                            <FormControl>
+                              <div className="space-y-2">
+                                <div className="flex flex-wrap gap-2">
+                                  {field.value.map((tag, index) => (
+                                    <Badge key={index} variant="secondary" className="flex items-center gap-1">
+                                      {tag}
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-4 w-4 p-0"
+                                        onClick={() => {
+                                          const newTags = field.value.filter((_, i) => i !== index);
+                                          field.onChange(newTags);
+                                        }}
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </Button>
+                                    </Badge>
+                                  ))}
+                                </div>
+                                <div className="flex gap-2">
+                                  <Input
+                                    placeholder="Add a tag"
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        const input = e.target as HTMLInputElement;
+                                        const value = input.value.trim();
+                                        if (value && !field.value.includes(value)) {
+                                          field.onChange([...field.value, value]);
+                                          input.value = '';
+                                        }
+                                      }
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
 
                     <FormField
                       control={form.control}
@@ -843,10 +1232,10 @@ export default function ShopkeeperDashboard() {
                         <FormItem>
                           <FormLabel>Description</FormLabel>
                           <FormControl>
-                            <Textarea 
+                            <Textarea
                               placeholder="Enter product description"
                               className="min-h-20"
-                              {...field} 
+                              {...field}
                             />
                           </FormControl>
                           <FormMessage />
@@ -860,7 +1249,7 @@ export default function ShopkeeperDashboard() {
                         <TrendingUp className="h-5 w-5" />
                         Special Features
                       </h3>
-                      
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormField
                           control={form.control}
@@ -922,8 +1311,8 @@ export default function ShopkeeperDashboard() {
                               <FormItem>
                                 <FormLabel>Discount Percentage (%)</FormLabel>
                                 <FormControl>
-                                  <Input 
-                                    type="number" 
+                                  <Input
+                                    type="number"
                                     placeholder="Enter discount percentage"
                                     min="0"
                                     max="100"
@@ -943,7 +1332,7 @@ export default function ShopkeeperDashboard() {
                               <FormItem>
                                 <FormLabel>Offer End Date</FormLabel>
                                 <FormControl>
-                                  <Input 
+                                  <Input
                                     type="date"
                                     {...field}
                                   />
@@ -961,8 +1350,8 @@ export default function ShopkeeperDashboard() {
                         {editingProduct ? "Update Product" : "Add Product"}
                       </Button>
                       {editingProduct && (
-                        <Button 
-                          type="button" 
+                        <Button
+                          type="button"
                           variant="outline"
                           onClick={() => {
                             setEditingProduct(null);
@@ -1026,9 +1415,9 @@ export default function ShopkeeperDashboard() {
                             </Select>
                           </div>
                         </div>
-                        
+
                         <Separator className="my-3" />
-                        
+
                         <div>
                           <p className="text-sm font-medium mb-2">Delivery Address:</p>
                           <p className="text-sm text-muted-foreground">{order.shippingAddress}</p>

@@ -25,11 +25,11 @@ export default function Stores() {
   };
 
   const filteredStores = Array.isArray(stores) ? stores.filter((store: Store) => {
-    const matchesSearch = searchQuery === "" || 
+    const matchesSearch = searchQuery === "" ||
       store.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       store.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       store.address?.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     return matchesSearch;
   }) : [];
 
@@ -71,94 +71,33 @@ export default function Stores() {
         </form>
       </div>
 
-      {/* Store Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <MapPin className="h-4 w-4 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Total Stores</p>
-                <p className="text-2xl font-bold">{Array.isArray(stores) ? stores.length : 0}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <div className="p-2 bg-green-100 rounded-lg">
-                <Clock className="h-4 w-4 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Open Now</p>
-                <p className="text-2xl font-bold">
-                  {Array.isArray(stores) ? stores.filter(() => getStoreHours().status === "Open").length : 0}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <div className="p-2 bg-yellow-100 rounded-lg">
-                <Star className="h-4 w-4 text-yellow-600" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">Featured</p>
-                <p className="text-2xl font-bold">
-                  {Array.isArray(stores) ? stores.filter((store: Store) => store.featured).length : 0}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
       {/* Stores Grid */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[...Array(6)].map((_, i) => (
             <Card key={i}>
               <CardContent className="p-6">
+                <Skeleton className="h-48 w-full mb-4" />
                 <Skeleton className="h-6 w-3/4 mb-2" />
-                <Skeleton className="h-4 w-full mb-4" />
-                <Skeleton className="h-4 w-2/3 mb-2" />
-                <Skeleton className="h-4 w-1/2" />
+                <Skeleton className="h-4 w-1/2 mb-4" />
+                <Skeleton className="h-10 w-full" />
               </CardContent>
             </Card>
           ))}
         </div>
       ) : filteredStores.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredStores.map((store: Store) => {
-            const hours = getStoreHours();
-            return (
-              <Card key={store.id} className="hover:shadow-lg transition-shadow">
-                <CardContent className="p-6">
-                  <div className="flex justify-between items-start mb-3">
-                    <div>
-                      <h3 className="font-semibold text-lg mb-1">{store.name}</h3>
-                      <Badge className={hours.color} variant="secondary">
-                        {hours.status}
-                      </Badge>
-                    </div>
-                    {store.featured && (
-                      <Badge className="bg-yellow-100 text-yellow-800">
-                        Featured
-                      </Badge>
-                    )}
+          {filteredStores.map((store) => (
+            <Card key={store.id}>
+              <CardContent className="p-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">{store.name}</h3>
+                    <Badge variant={getStoreHours().color}>
+                      {getStoreHours().status}
+                    </Badge>
                   </div>
-                  
-                  <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                    {store.description || "No description available"}
-                  </p>
-                  
+
                   <div className="space-y-2 mb-4">
                     {store.address && (
                       <div className="flex items-center space-x-2 text-sm">
@@ -175,9 +114,9 @@ export default function Stores() {
                     {store.website && (
                       <div className="flex items-center space-x-2 text-sm">
                         <Globe className="h-4 w-4 text-muted-foreground" />
-                        <a 
-                          href={store.website} 
-                          target="_blank" 
+                        <a
+                          href={store.website}
+                          target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-600 hover:underline"
                         >
@@ -186,7 +125,7 @@ export default function Stores() {
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="flex gap-2">
                     <Link href={`/stores/${store.id}`} className="flex-1">
                       <Button className="w-full" size="sm">
@@ -197,10 +136,10 @@ export default function Stores() {
                       <MapPin className="h-4 w-4" />
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       ) : (
         <Card>
@@ -208,14 +147,14 @@ export default function Stores() {
             <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-semibold mb-2">No stores found</h3>
             <p className="text-muted-foreground mb-4">
-              {searchQuery 
+              {searchQuery
                 ? `No stores match your search for "${searchQuery}"`
                 : "No stores are available at the moment"
               }
             </p>
             {searchQuery && (
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => setSearchQuery("")}
               >
                 Clear Search
