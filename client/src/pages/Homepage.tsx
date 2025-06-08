@@ -25,7 +25,7 @@ export default function Homepage() {
     queryKey: ["/api/stores"],
   });
 
-  const featuredProducts = products?.slice(0, 6) || [];
+  const featuredProducts = products?.slice(0, 20) || [];
   const popularStores = stores?.slice(0, 4) || [];
 
   // Countdown logic for Slide 3

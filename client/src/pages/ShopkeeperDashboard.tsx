@@ -38,11 +38,26 @@ import type { Product, Order, OrderItem, Store, Category } from "@shared/schema"
 const productSchema = z.object({
   name: z.string().min(1, "Product name is required"),
   description: z.string().optional(),
-  price: z.string().min(1, "Price is required"),
-  originalPrice: z.string().optional(),
+  price: z.string()
+    .min(1, "Price is required")
+    .refine((val) => {
+      const num = parseFloat(val);
+      return !isNaN(num) && num > 0 && num <= 99999999.99;
+    }, {
+      message: "Price must be a positive number with max 2 decimal places"
+    }),
+  originalPrice: z.string()
+    .optional()
+    .refine((val) => {
+      if (!val) return true;
+      const num = parseFloat(val);
+      return !isNaN(num) && num > 0 && num <= 99999999.99;
+    }, {
+      message: "Original price must be a positive number with max 2 decimal places"
+    }),
   categoryId: z.number().min(1, "Category is required"),
   stock: z.number().min(0, "Stock must be 0 or greater"),
-  imageUrl: z.string().url("Please enter a valid image URL").optional(),
+  imageUrl: z.string().optional(),
   images: z.array(z.string()).default([]),
   isFastSell: z.boolean().default(false),
   isOnOffer: z.boolean().default(false),
@@ -63,8 +78,8 @@ const storeSchema = z.object({
   latitude: z.string().optional(),
   longitude: z.string().optional(),
   phone: z.string().optional(),
-  logo: z.string().url("Please enter a valid logo URL").optional(),
-  coverImage: z.string().url("Please enter a valid cover image URL").optional(),
+  logo: z.string().optional(),
+  coverImage: z.string().optional(),
   googleMapsLink: z.string().optional(),
 });
 
@@ -80,20 +95,6 @@ export default function ShopkeeperDashboard() {
   const [showCamera, setShowCamera] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-
-  // Check if user is a store owner
-  if (!user || user.role !== "store_owner") {
-    return (
-      <div className="min-h-screen bg-muted flex items-center justify-center">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6 text-center">
-            <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
-            <p className="text-muted-foreground">This page is only accessible to store owners.</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   // Queries
   const { data: stores = [] } = useQuery<Store[]>({
@@ -183,39 +184,68 @@ export default function ShopkeeperDashboard() {
   const totalRevenue = orders.reduce((sum, order) => sum + Number(order.totalAmount), 0);
   const pendingOrders = orders.filter(order => order.status === "pending").length;
 
-  const handleAddProduct = async (data: ProductForm) => {
-    if (!currentStore) return;
+  // Check if user is a store owner
+  if (!user || user.role !== "store_owner") {
+    return (
+      <div className="min-h-screen bg-muted flex items-center justify-center">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6 text-center">
+            <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
+            <p className="text-muted-foreground">This page is only accessible to store owners.</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
+  const handleAddProduct = async (data: z.infer<typeof productSchema>) => {
+    if (!currentStore) {
+      toast({
+        title: "Error",
+        description: "Please select a store first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    let filteredData;
     try {
-      const productData = {
-        ...data,
-        storeId: currentStore.id,
-        price: data.price,
-        originalPrice: data.originalPrice || undefined,
-        images: data.imageUrl ? [data.imageUrl] : [],
-        isFastSell: data.isFastSell || false,
-        isOnOffer: data.isOnOffer || false,
-        offerPercentage: data.offerPercentage || 0,
-        offerEndDate: data.offerEndDate || undefined,
-        specifications: data.specifications || [],
-        features: data.features || [],
-        tags: data.tags || [],
+      // Format data according to server schema
+      filteredData = {
+        name: data.name.trim(),
+        description: data.description?.trim() || null,
+        price: data.price, // Keep as string since server expects string
+        originalPrice: data.originalPrice || null, // Keep as string since server expects string
+        categoryId: data.categoryId, // Use categoryId directly since it's already a number from the form
+        storeId: currentStore.id, // Keep as number since server expects number
+        stock: data.stock || 0,
+        images: data.images?.filter(img => img.trim() !== '') || [],
+        isFastSell: Boolean(data.isFastSell),
+        isOnOffer: Boolean(data.isOnOffer),
+        offerPercentage: data.isOnOffer ? data.offerPercentage || 0 : 0,
+        offerEndDate: data.isOnOffer ? data.offerEndDate || null : null,
+        isActive: true
       };
 
+      console.log('Sending product data:', filteredData);
+      console.log('Current store:', currentStore);
+
       if (editingProduct) {
-        await apiPut(`/api/products/${editingProduct.id}`, productData);
+        const response = await apiPut(`/api/products/${editingProduct.id}`, filteredData);
+        console.log('Update response:', response);
         toast({ title: "Product updated successfully" });
       } else {
-        await apiPost("/api/products", productData);
+        const response = await apiPost("/api/products", filteredData);
+        console.log('Create response:', response);
         toast({ title: "Product added successfully" });
       }
-
       form.reset();
       setEditingProduct(null);
-      // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: [`/api/products/store/${currentStore.id}`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
     } catch (error) {
+      console.error("Error saving product:", error);
+      console.error("Form data:", data);
+      console.error("Filtered data:", filteredData);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to save product",
@@ -389,9 +419,10 @@ export default function ShopkeeperDashboard() {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        setShowCamera(true);
       }
-      setShowCamera(true);
     } catch (error) {
+      console.error("Error accessing camera:", error);
       toast({
         title: "Error",
         description: "Failed to access camera",
@@ -401,37 +432,148 @@ export default function ShopkeeperDashboard() {
   };
 
   const captureImage = () => {
-    if (videoRef.current) {
-      const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(videoRef.current, 0, 0);
-        const imageUrl = canvas.toDataURL('image/jpeg');
-        setCapturedImage(imageUrl);
-        setShowCamera(false);
-        // Stop the camera stream
-        const stream = videoRef.current.srcObject as MediaStream;
-        stream?.getTracks().forEach(track => track.stop());
+    if (!videoRef.current) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.drawImage(videoRef.current, 0, 0);
+    const imageUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+    // Get current images array or initialize empty array
+    const currentImages = form.getValues("images") || [];
+
+    // Add the captured image to the array
+    form.setValue("images", [...currentImages, imageUrl]);
+
+    // Stop camera stream
+    const stream = videoRef.current.srcObject as MediaStream;
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+    setShowCamera(false);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      // Check file size (max 2MB)
+      if (file.size > 2 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Please select an image smaller than 2MB",
+          variant: "destructive",
+        });
+        return;
       }
+
+      // Check file type
+      if (!file.type.startsWith('image/')) {
+        toast({
+          title: "Please upload an image file",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const base64 = e.target?.result as string;
+        if (!base64) return;
+
+        // Get current images array or initialize empty array
+        const currentImages = form.getValues("images") || [];
+
+        // Add the new image to the array
+        form.setValue("images", [...currentImages, base64]);
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error("Error uploading file:", error);
+      toast({
+        title: "Failed to upload image",
+        variant: "destructive",
+      });
     }
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files;
-    if (!files) return;
+  const handleAddImageUrl = () => {
+    const currentImages = form.getValues("images") || [];
+    form.setValue("images", [...currentImages, ""]);
+  };
 
-    for (const file of Array.from(files)) {
-      // Convert file to base64
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        const currentImages = form.getValues("images") || [];
-        form.setValue("images", [...currentImages, base64String]);
-      };
-      reader.readAsDataURL(file);
-    }
+  const handleImageUrlChange = (index: number, value: string) => {
+    const currentImages = form.getValues("images") || [];
+    const newImages = [...currentImages];
+    newImages[index] = value;
+    form.setValue("images", newImages);
+  };
+
+  const handleRemoveImage = (index: number) => {
+    const currentImages = form.getValues("images") || [];
+    form.setValue(
+      "images",
+      currentImages.filter((_, i) => i !== index)
+    );
+  };
+
+  const handleAddSpecification = () => {
+    const currentSpecs = form.getValues("specifications") || [];
+    form.setValue("specifications", [...currentSpecs, { key: "", value: "" }]);
+  };
+
+  const handleSpecificationChange = (index: number, field: "key" | "value", value: string) => {
+    const currentSpecs = form.getValues("specifications") || [];
+    const newSpecs = [...currentSpecs];
+    newSpecs[index] = { ...newSpecs[index], [field]: value };
+    form.setValue("specifications", newSpecs);
+  };
+
+  const handleRemoveSpecification = (index: number) => {
+    const currentSpecs = form.getValues("specifications") || [];
+    const newSpecs = currentSpecs.filter((_, i) => i !== index);
+    form.setValue("specifications", newSpecs);
+  };
+
+  const handleAddFeature = () => {
+    const currentFeatures = form.getValues("features") || [];
+    form.setValue("features", [...currentFeatures, ""]);
+  };
+
+  const handleFeatureChange = (index: number, value: string) => {
+    const currentFeatures = form.getValues("features") || [];
+    const newFeatures = [...currentFeatures];
+    newFeatures[index] = value;
+    form.setValue("features", newFeatures);
+  };
+
+  const handleRemoveFeature = (index: number) => {
+    const currentFeatures = form.getValues("features") || [];
+    const newFeatures = currentFeatures.filter((_, i) => i !== index);
+    form.setValue("features", newFeatures);
+  };
+
+  const handleAddTag = () => {
+    const currentTags = form.getValues("tags") || [];
+    form.setValue("tags", [...currentTags, ""]);
+  };
+
+  const handleTagChange = (index: number, value: string) => {
+    const currentTags = form.getValues("tags") || [];
+    const newTags = [...currentTags];
+    newTags[index] = value;
+    form.setValue("tags", newTags);
+  };
+
+  const handleRemoveTag = (index: number) => {
+    const currentTags = form.getValues("tags") || [];
+    const newTags = currentTags.filter((_, i) => i !== index);
+    form.setValue("tags", newTags);
   };
 
   return (
@@ -702,9 +844,46 @@ export default function ShopkeeperDashboard() {
                         name="logo"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Store Logo URL</FormLabel>
+                            <FormLabel>Store Logo</FormLabel>
                             <FormControl>
-                              <Input placeholder="https://example.com/logo.png" {...field} />
+                              <div className="space-y-4">
+                                <div className="flex gap-4">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => document.getElementById('store-logo-upload')?.click()}
+                                    className="flex-1"
+                                  >
+                                    <Upload className="h-4 w-4 mr-2" />
+                                    Upload Logo
+                                  </Button>
+                                  <input
+                                    id="store-logo-upload"
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => handleStoreFileUpload(e, "logo")}
+                                  />
+                                </div>
+                                {field.value && (
+                                  <div className="relative">
+                                    <img
+                                      src={field.value}
+                                      alt="Store Logo"
+                                      className="w-full h-32 object-contain rounded-lg"
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="destructive"
+                                      size="icon"
+                                      className="absolute top-2 right-2"
+                                      onClick={() => field.onChange("")}
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -716,9 +895,46 @@ export default function ShopkeeperDashboard() {
                         name="coverImage"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Cover Image URL</FormLabel>
+                            <FormLabel>Cover Image</FormLabel>
                             <FormControl>
-                              <Input placeholder="https://example.com/cover.jpg" {...field} />
+                              <div className="space-y-4">
+                                <div className="flex gap-4">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => document.getElementById('store-cover-upload')?.click()}
+                                    className="flex-1"
+                                  >
+                                    <Upload className="h-4 w-4 mr-2" />
+                                    Upload Cover
+                                  </Button>
+                                  <input
+                                    id="store-cover-upload"
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    onChange={(e) => handleStoreFileUpload(e, "coverImage")}
+                                  />
+                                </div>
+                                {field.value && (
+                                  <div className="relative">
+                                    <img
+                                      src={field.value}
+                                      alt="Store Cover"
+                                      className="w-full h-32 object-cover rounded-lg"
+                                    />
+                                    <Button
+                                      type="button"
+                                      variant="destructive"
+                                      size="icon"
+                                      className="absolute top-2 right-2"
+                                      onClick={() => field.onChange("")}
+                                    >
+                                      <X className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
                             </FormControl>
                             <FormMessage />
                           </FormItem>
@@ -813,13 +1029,11 @@ export default function ShopkeeperDashboard() {
             </Card>
           </TabsContent>
 
-          {/* Add/Edit Product Tab */}
+          {/* Add Product Tab */}
           <TabsContent value="add-product" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>
-                  {editingProduct ? "Edit Product" : "Add New Product"}
-                </CardTitle>
+                <CardTitle>{editingProduct ? "Edit Product" : "Add New Product"}</CardTitle>
               </CardHeader>
               <CardContent>
                 <Form {...form}>
@@ -830,7 +1044,7 @@ export default function ShopkeeperDashboard() {
                         name="name"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Product Name</FormLabel>
+                            <FormLabel>Product Name *</FormLabel>
                             <FormControl>
                               <Input placeholder="Enter product name" {...field} />
                             </FormControl>
@@ -844,14 +1058,14 @@ export default function ShopkeeperDashboard() {
                         name="categoryId"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Category</FormLabel>
+                            <FormLabel>Category *</FormLabel>
                             <Select
-                              onValueChange={(value) => field.onChange(parseInt(value))}
-                              value={field.value?.toString()}
+                              onValueChange={(value) => field.onChange(Number(value))}
+                              defaultValue={field.value.toString()}
                             >
                               <FormControl>
                                 <SelectTrigger>
-                                  <SelectValue placeholder="Select category" />
+                                  <SelectValue placeholder="Select a category" />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
@@ -872,7 +1086,7 @@ export default function ShopkeeperDashboard() {
                         name="price"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Price (₹)</FormLabel>
+                            <FormLabel>Price (₹) *</FormLabel>
                             <FormControl>
                               <Input type="number" placeholder="Enter price" {...field} />
                             </FormControl>
@@ -886,7 +1100,7 @@ export default function ShopkeeperDashboard() {
                         name="originalPrice"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Original Price (₹) - Optional</FormLabel>
+                            <FormLabel>Original Price (₹)</FormLabel>
                             <FormControl>
                               <Input type="number" placeholder="Enter original price" {...field} />
                             </FormControl>
@@ -900,326 +1114,34 @@ export default function ShopkeeperDashboard() {
                         name="stock"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Stock Quantity</FormLabel>
+                            <FormLabel>Stock *</FormLabel>
                             <FormControl>
                               <Input
                                 type="number"
-                                placeholder="Enter quantity"
+                                placeholder="Enter stock quantity"
                                 {...field}
-                                onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                                onChange={e => field.onChange(Number(e.target.value))}
                               />
                             </FormControl>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
-                    </div>
-
-                    <div className="space-y-4">
-                      <FormField
-                        control={form.control}
-                        name="imageUrl"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Product Images</FormLabel>
-                            <FormControl>
-                              <div className="space-y-4">
-                                <div className="flex gap-4">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={handleCameraCapture}
-                                    className="flex-1"
-                                  >
-                                    <Camera className="h-4 w-4 mr-2" />
-                                    Take Photo
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={() => document.getElementById('file-upload')?.click()}
-                                    className="flex-1"
-                                  >
-                                    <Upload className="h-4 w-4 mr-2" />
-                                    Upload Image
-                                  </Button>
-                                  <input
-                                    id="file-upload"
-                                    type="file"
-                                    accept="image/*"
-                                    multiple
-                                    className="hidden"
-                                    onChange={handleFileUpload}
-                                  />
-                                </div>
-
-                                {showCamera && (
-                                  <div className="relative">
-                                    <video
-                                      ref={videoRef}
-                                      autoPlay
-                                      playsInline
-                                      className="w-full h-64 object-cover rounded-lg"
-                                    />
-                                    <Button
-                                      type="button"
-                                      onClick={captureImage}
-                                      className="absolute bottom-4 left-1/2 transform -translate-x-1/2"
-                                    >
-                                      Capture
-                                    </Button>
-                                  </div>
-                                )}
-
-                                {capturedImage && (
-                                  <div className="relative">
-                                    <img
-                                      src={capturedImage}
-                                      alt="Captured"
-                                      className="w-full h-64 object-cover rounded-lg"
-                                    />
-                                    <Button
-                                      type="button"
-                                      variant="destructive"
-                                      size="icon"
-                                      className="absolute top-2 right-2"
-                                      onClick={() => setCapturedImage(null)}
-                                    >
-                                      <X className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                )}
-
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                  {form.getValues("images")?.map((image, index) => (
-                                    <div key={index} className="relative">
-                                      <img
-                                        src={image}
-                                        alt={`Product ${index + 1}`}
-                                        className="w-full h-32 object-cover rounded-lg"
-                                      />
-                                      <Button
-                                        type="button"
-                                        variant="destructive"
-                                        size="icon"
-                                        className="absolute top-2 right-2"
-                                        onClick={() => {
-                                          const currentImages = form.getValues("images") || [];
-                                          form.setValue(
-                                            "images",
-                                            currentImages.filter((_, i) => i !== index)
-                                          );
-                                        }}
-                                      >
-                                        <X className="h-4 w-4" />
-                                      </Button>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
 
                       <FormField
                         control={form.control}
-                        name="images"
+                        name="isFastSell"
                         render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Additional Image URLs</FormLabel>
+                          <FormItem className="flex items-center space-x-2">
                             <FormControl>
-                              <div className="space-y-2">
-                                {field.value.map((url, index) => (
-                                  <div key={index} className="flex gap-2">
-                                    <Input
-                                      type="url"
-                                      placeholder="https://example.com/image.jpg"
-                                      value={url}
-                                      onChange={(e) => {
-                                        const newUrls = [...field.value];
-                                        newUrls[index] = e.target.value;
-                                        field.onChange(newUrls);
-                                      }}
-                                    />
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="icon"
-                                      onClick={() => {
-                                        const newUrls = field.value.filter((_, i) => i !== index);
-                                        field.onChange(newUrls);
-                                      }}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                ))}
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  onClick={() => field.onChange([...field.value, ""])}
-                                >
-                                  <Plus className="h-4 w-4 mr-2" />
-                                  Add Image URL
-                                </Button>
-                              </div>
+                              <input
+                                type="checkbox"
+                                checked={field.value}
+                                onChange={field.onChange}
+                                className="h-4 w-4 rounded border-gray-300"
+                              />
                             </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="specifications"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Product Specifications</FormLabel>
-                            <FormControl>
-                              <div className="space-y-2">
-                                {field.value.map((spec, index) => (
-                                  <div key={index} className="flex gap-2">
-                                    <Input
-                                      placeholder="Specification name"
-                                      value={spec.key}
-                                      onChange={(e) => {
-                                        const newSpecs = [...field.value];
-                                        newSpecs[index] = { ...spec, key: e.target.value };
-                                        field.onChange(newSpecs);
-                                      }}
-                                    />
-                                    <Input
-                                      placeholder="Value"
-                                      value={spec.value}
-                                      onChange={(e) => {
-                                        const newSpecs = [...field.value];
-                                        newSpecs[index] = { ...spec, value: e.target.value };
-                                        field.onChange(newSpecs);
-                                      }}
-                                    />
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="icon"
-                                      onClick={() => {
-                                        const newSpecs = field.value.filter((_, i) => i !== index);
-                                        field.onChange(newSpecs);
-                                      }}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                ))}
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  onClick={() => field.onChange([...field.value, { key: "", value: "" }])}
-                                >
-                                  <Plus className="h-4 w-4 mr-2" />
-                                  Add Specification
-                                </Button>
-                              </div>
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="features"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Product Features</FormLabel>
-                            <FormControl>
-                              <div className="space-y-2">
-                                {field.value.map((feature, index) => (
-                                  <div key={index} className="flex gap-2">
-                                    <Input
-                                      placeholder="Enter feature"
-                                      value={feature}
-                                      onChange={(e) => {
-                                        const newFeatures = [...field.value];
-                                        newFeatures[index] = e.target.value;
-                                        field.onChange(newFeatures);
-                                      }}
-                                    />
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="icon"
-                                      onClick={() => {
-                                        const newFeatures = field.value.filter((_, i) => i !== index);
-                                        field.onChange(newFeatures);
-                                      }}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </div>
-                                ))}
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  onClick={() => field.onChange([...field.value, ""])}
-                                >
-                                  <Plus className="h-4 w-4 mr-2" />
-                                  Add Feature
-                                </Button>
-                              </div>
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      <FormField
-                        control={form.control}
-                        name="tags"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Product Tags</FormLabel>
-                            <FormControl>
-                              <div className="space-y-2">
-                                <div className="flex flex-wrap gap-2">
-                                  {field.value.map((tag, index) => (
-                                    <Badge key={index} variant="secondary" className="flex items-center gap-1">
-                                      {tag}
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-4 w-4 p-0"
-                                        onClick={() => {
-                                          const newTags = field.value.filter((_, i) => i !== index);
-                                          field.onChange(newTags);
-                                        }}
-                                      >
-                                        <X className="h-3 w-3" />
-                                      </Button>
-                                    </Badge>
-                                  ))}
-                                </div>
-                                <div className="flex gap-2">
-                                  <Input
-                                    placeholder="Add a tag"
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        const input = e.target as HTMLInputElement;
-                                        const value = input.value.trim();
-                                        if (value && !field.value.includes(value)) {
-                                          field.onChange([...field.value, value]);
-                                          input.value = '';
-                                        }
-                                      }
-                                    }}
-                                  />
-                                </div>
-                              </div>
-                            </FormControl>
-                            <FormMessage />
+                            <FormLabel className="!mt-0">Fast Sell</FormLabel>
                           </FormItem>
                         )}
                       />
@@ -1234,7 +1156,7 @@ export default function ShopkeeperDashboard() {
                           <FormControl>
                             <Textarea
                               placeholder="Enter product description"
-                              className="min-h-20"
+                              className="min-h-[100px]"
                               {...field}
                             />
                           </FormControl>
@@ -1243,125 +1165,261 @@ export default function ShopkeeperDashboard() {
                       )}
                     />
 
-                    {/* Special Features Section */}
-                    <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
-                      <h3 className="font-medium text-lg flex items-center gap-2">
-                        <TrendingUp className="h-5 w-5" />
-                        Special Features
-                      </h3>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-medium">Product Images</h3>
+                        <div className="space-x-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleAddImageUrl}
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Image URL
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleCameraCapture}
+                          >
+                            <Camera className="h-4 w-4 mr-2" />
+                            Take Photo
+                          </Button>
+                          <label className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2">
+                            <Upload className="h-4 w-4 mr-2" />
+                            Upload Image
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={handleFileUpload}
+                            />
+                          </label>
+                        </div>
+                      </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <FormField
-                          control={form.control}
-                          name="isFastSell"
-                          render={({ field }) => (
-                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                              <div className="space-y-0.5">
-                                <FormLabel className="text-base font-medium">
-                                  Fast Sell Product
-                                </FormLabel>
-                                <div className="text-sm text-muted-foreground">
-                                  Mark as fast-selling/trending item
-                                </div>
-                              </div>
-                              <FormControl>
-                                <input
-                                  type="checkbox"
-                                  checked={field.value}
-                                  onChange={field.onChange}
-                                  className="w-4 h-4"
-                                />
-                              </FormControl>
-                            </FormItem>
-                          )}
-                        />
+                      {showCamera && (
+                        <div className="relative">
+                          <video
+                            ref={videoRef}
+                            autoPlay
+                            playsInline
+                            className="w-full h-64 object-cover rounded-lg"
+                          />
+                          <Button
+                            type="button"
+                            onClick={captureImage}
+                            className="absolute bottom-4 left-1/2 transform -translate-x-1/2"
+                          >
+                            Capture
+                          </Button>
+                        </div>
+                      )}
 
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {form.watch("images")?.map((image, index) => (
+                          <div key={index} className="relative group">
+                            {image.startsWith('data:image') ? (
+                              <img
+                                src={image}
+                                alt={`Product ${index + 1}`}
+                                className="w-full h-32 object-cover rounded-lg"
+                              />
+                            ) : (
+                              <Input
+                                value={image}
+                                onChange={(e) => handleImageUrlChange(index, e.target.value)}
+                                placeholder="Enter image URL"
+                              />
+                            )}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="absolute right-2 top-2 opacity-0 group-hover:opacity-100"
+                              onClick={() => handleRemoveImage(index)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-medium">Specifications</h3>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleAddSpecification}
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Specification
+                        </Button>
+                      </div>
+
+                      <div className="space-y-4">
+                        {form.watch("specifications")?.map((spec, index) => (
+                          <div key={index} className="flex gap-4">
+                            <Input
+                              value={spec.key}
+                              onChange={(e) => handleSpecificationChange(index, "key", e.target.value)}
+                              placeholder="Specification name"
+                            />
+                            <Input
+                              value={spec.value}
+                              onChange={(e) => handleSpecificationChange(index, "value", e.target.value)}
+                              placeholder="Specification value"
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveSpecification(index)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-medium">Features</h3>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleAddFeature}
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Feature
+                        </Button>
+                      </div>
+
+                      <div className="space-y-4">
+                        {form.watch("features")?.map((feature, index) => (
+                          <div key={index} className="flex gap-4">
+                            <Input
+                              value={feature}
+                              onChange={(e) => handleFeatureChange(index, e.target.value)}
+                              placeholder="Enter feature"
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveFeature(index)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-lg font-medium">Tags</h3>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleAddTag}
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Tag
+                        </Button>
+                      </div>
+
+                      <div className="space-y-4">
+                        {form.watch("tags")?.map((tag, index) => (
+                          <div key={index} className="flex gap-4">
+                            <Input
+                              value={tag}
+                              onChange={(e) => handleTagChange(index, e.target.value)}
+                              placeholder="Enter tag"
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleRemoveTag(index)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <h3 className="text-lg font-medium">Offer Settings</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <FormField
                           control={form.control}
                           name="isOnOffer"
                           render={({ field }) => (
-                            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                              <div className="space-y-0.5">
-                                <FormLabel className="text-base font-medium">
-                                  Special Offer
-                                </FormLabel>
-                                <div className="text-sm text-muted-foreground">
-                                  Apply discount offer
-                                </div>
-                              </div>
+                            <FormItem className="flex items-center space-x-2">
                               <FormControl>
                                 <input
                                   type="checkbox"
                                   checked={field.value}
                                   onChange={field.onChange}
-                                  className="w-4 h-4"
+                                  className="h-4 w-4 rounded border-gray-300"
                                 />
                               </FormControl>
+                              <FormLabel className="!mt-0">On Offer</FormLabel>
                             </FormItem>
                           )}
                         />
+
+                        {form.watch("isOnOffer") && (
+                          <>
+                            <FormField
+                              control={form.control}
+                              name="offerPercentage"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Offer Percentage</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      max="100"
+                                      placeholder="Enter offer percentage"
+                                      {...field}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+
+                            <FormField
+                              control={form.control}
+                              name="offerEndDate"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Offer End Date</FormLabel>
+                                  <FormControl>
+                                    <Input
+                                      type="date"
+                                      {...field}
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </>
+                        )}
                       </div>
-
-                      {form.watch("isOnOffer") && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                          <FormField
-                            control={form.control}
-                            name="offerPercentage"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Discount Percentage (%)</FormLabel>
-                                <FormControl>
-                                  <Input
-                                    type="number"
-                                    placeholder="Enter discount percentage"
-                                    min="0"
-                                    max="100"
-                                    {...field}
-                                    onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={form.control}
-                            name="offerEndDate"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Offer End Date</FormLabel>
-                                <FormControl>
-                                  <Input
-                                    type="date"
-                                    {...field}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-                      )}
                     </div>
 
-                    <div className="flex space-x-4">
-                      <Button type="submit" className="btn-primary">
-                        {editingProduct ? "Update Product" : "Add Product"}
-                      </Button>
-                      {editingProduct && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={() => {
-                            setEditingProduct(null);
-                            form.reset();
-                          }}
-                        >
-                          Cancel
-                        </Button>
-                      )}
-                    </div>
+                    <Button type="submit" className="w-full">
+                      {editingProduct ? "Update Product" : "Add Product"}
+                    </Button>
                   </form>
                 </Form>
               </CardContent>

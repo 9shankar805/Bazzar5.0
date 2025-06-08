@@ -148,7 +148,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const store = await storage.createStore(storeData);
+      // Handle base64 image data
+      const storeWithImages = {
+        ...storeData,
+        logo: storeData.logo || null,
+        coverImage: storeData.coverImage || null
+      };
+
+      const store = await storage.createStore(storeWithImages);
       res.json(store);
     } catch (error) {
       console.error("Store creation error:", error);
