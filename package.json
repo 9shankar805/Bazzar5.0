@@ -5,9 +5,9 @@
   "license": "MIT",
   "scripts": {
     "dev": "cross-env NODE_ENV=development tsx server/index.ts",
-    "prebuild": "npm install",
+    "prebuild": "npm install && cd client && npm install && cd ..",
     "build": "npm run build:client && npm run build:server",
-    "build:client": "vite build",
+    "build:client": "cd client && npm run build",
     "build:server": "esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
     "start": "cross-env NODE_ENV=production node dist/index.js",
     "check": "tsc",
