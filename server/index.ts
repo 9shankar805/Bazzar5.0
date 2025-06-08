@@ -58,9 +58,9 @@ app.use((req, res, next) => {
       serveStatic(app);
     }
 
-    const port = 3001;
+    const port = process.env.PORT || 3001;
     server.listen(port, () => {
-      log(`Server is running on http://localhost:${port}`);
+      log(`Server is running on port ${port}`);
       log(`Health check available at http://localhost:${port}/api/health`);
     });
   } catch (error) {

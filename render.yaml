@@ -20,8 +20,8 @@ services:
       - key: SESSION_SECRET
         generateValue: true
       - key: PORT
-        value: 3000
-    healthCheckPath: /
+        value: 10000
+    healthCheckPath: /api/health
     autoDeploy: true
 
 databases:
